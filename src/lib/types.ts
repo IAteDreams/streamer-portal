@@ -12,3 +12,13 @@ export interface HealthResponse {
   environment: string;
   timestamp: string;
 }
+
+/** The signed-in streamer. Auth is out of scope: this comes from mock data. */
+export interface Streamer {
+  id: string;
+  displayName: string;
+  handle: string;
+  email: string;
+  /** Optional remote image; the avatar falls back to initials when absent. */
+  avatarUrl?: string;
+}
