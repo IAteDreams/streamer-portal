@@ -53,3 +53,9 @@ export function formatDelta(value: number): string {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(1)}%`;
 }
+
+/** 842.1 -> "+$842.10", -5000 -> "-$5,000.00". Intl supplies the minus; the plus is explicit. */
+export function formatSignedCurrency(value: number, currency: string): string {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${formatCurrency(value, currency)}`;
+}

@@ -52,6 +52,7 @@ export interface Post {
 export interface WalletSummary {
   balance: number;
   pendingEarnings: number;
+  lifetimeEarnings: number;
   /** ISO 4217 code, e.g. "USD". */
   currency: string;
 }
@@ -66,4 +67,21 @@ export interface DashboardMetrics {
   followersDelta: number;
   viewsDelta: number;
   balanceDelta: number;
+}
+
+export type TransactionType = "earning" | "payout" | "adjustment";
+export type TransactionStatus = "completed" | "pending" | "failed";
+
+/** One line in the wallet's transaction history. */
+export interface Transaction {
+  id: string;
+  description: string;
+  type: TransactionType;
+  status: TransactionStatus;
+  /** Signed: positive for money in, negative for money out. */
+  amount: number;
+  /** ISO 4217 code, e.g. "USD". */
+  currency: string;
+  /** ISO 8601. */
+  occurredAt: string;
 }

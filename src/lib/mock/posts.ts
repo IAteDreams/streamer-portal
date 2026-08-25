@@ -1,17 +1,5 @@
+import { daysAgo } from "@/lib/mock/dates";
 import type { Post, PlatformId } from "@/lib/types";
-
-/**
- * Publish dates are generated relative to the current request rather than
- * hardcoded, so the date-range filters on /posts always have content to show.
- * With fixed timestamps "Last 7 days" would silently empty out as real time
- * moved past them.
- */
-function daysAgo(days: number, hour = 12): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  d.setUTCHours(hour, 0, 0, 0);
-  return d.toISOString();
-}
 
 interface PostSeed {
   platform: PlatformId;
