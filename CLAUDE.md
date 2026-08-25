@@ -36,6 +36,34 @@ that streamer from a mock module (see below) wherever a real app would read a
 session. Do not invent a session layer, a `getCurrentUser()` that reads cookies,
 or a "signed out" state - there is no signed-out state.
 
+## Wallet is no longer mock data
+
+The wallet runs on a real Postgres ledger (Drizzle + Supabase), not
+`src/lib/mock/`. Accounts and posts are still mock modules; only the wallet
+graduated.
+
+- **Balance is derived, never stored** — `SUM(amount_cents)` over completed
+  `transactions` rows. Do not add a `balance` column; that is the bug this
+  design exists to prevent.
+- **Money is integer cents.** Convert only at the display edge
+  (`formatCentsCurrency`). Never use floats for money.
+- **All wallet reads go through `src/lib/payouts/service.ts`** — the wallet page
+  and the dashboard tile both call `getWalletSummary()`, so they cannot diverge.
+- **Payout writes go through `requestPayout()`**, which requires an idempotency
+  key and enforces the balance limit server-side. Client validation is UX only.
+- Payout delivery sits behind `PayoutProvider`. Add vendors as adapters; do not
+  reach for the Stripe SDK from the domain or the UI.
+
+Run `npm run db:migrate && npm run db:seed` before the app will serve `/` or
+`/wallet`; both return 500 without a database.
+
+### Security: the payout route is unauthenticated
+
+`POST /api/payouts` has no auth. The streamer id is resolved server-side and
+never read from the request, but anyone who can reach the endpoint can drain
+the balance. This must not be deployed publicly. Auth remains out of scope
+above; lifting that is the prerequisite for any real deployment.
+
 ## Stack
 
 | Layer      | Choice                                                    |

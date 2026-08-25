@@ -1,16 +1,23 @@
 import type { Metadata } from "next";
 
 import { WalletPanel } from "@/components/wallet-panel";
-import { getTransactions, getWalletSummary } from "@/lib/mock/wallet";
+import { getTransactions, getWalletSummary } from "@/lib/payouts/service";
 
 export const metadata: Metadata = {
   title: "Wallet | Streamer Portal",
 };
 
-// Transaction dates are request-relative, so this must not be prerendered.
+// Reads live ledger state, so it must never be prerendered.
 export const dynamic = "force-dynamic";
 
-export default function WalletPage() {
+export default async function WalletPage() {
+  // Balance and history come from the same derived source in one place, so
+  // they cannot show inconsistent state.
+  const [summary, transactions] = await Promise.all([
+    getWalletSummary(),
+    getTransactions(),
+  ]);
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10">
       <header className="space-y-1">
@@ -20,10 +27,7 @@ export default function WalletPage() {
         </p>
       </header>
 
-      <WalletPanel
-        summary={getWalletSummary()}
-        transactions={getTransactions()}
-      />
+      <WalletPanel summary={summary} transactions={transactions} />
     </div>
   );
 }

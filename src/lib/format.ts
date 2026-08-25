@@ -30,7 +30,7 @@ export function formatCompact(value: number): string {
   return compact.format(value);
 }
 
-/** 1284.5 -> "$1,284.50" */
+/** Minor units to display currency: 128455 -> "$1,284.55". */
 export function formatCurrency(value: number, currency: string): string {
   return new Intl.NumberFormat(LOCALE, {
     style: "currency",
@@ -58,4 +58,21 @@ export function formatDelta(value: number): string {
 export function formatSignedCurrency(value: number, currency: string): string {
   const sign = value > 0 ? "+" : "";
   return `${sign}${formatCurrency(value, currency)}`;
+}
+
+/** Minor units to display currency: 1248055 -> "$12,480.55". */
+export function formatCentsCurrency(cents: number, currency: string): string {
+  return formatCurrency(cents / 100, currency);
+}
+
+/** Signed minor units: 84210 -> "+$842.10", -500000 -> "-$5,000.00". */
+export function formatSignedCents(cents: number, currency: string): string {
+  const sign = cents > 0 ? "+" : "";
+  return sign + formatCurrency(cents / 100, currency);
+}
+
+/** Parses user input in major units into integer cents. NaN if unparseable. */
+export function parseCents(input: string): number {
+  const value = Number.parseFloat(input);
+  return Number.isFinite(value) ? Math.round(value * 100) : Number.NaN;
 }

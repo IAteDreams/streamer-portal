@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Banknote, Clock, TrendingUp } from "lucide-react";
+import { Banknote, Clock, Loader2, TrendingUp } from "lucide-react";
 
 import { TransactionHistory } from "@/components/transaction-history";
 import { Button } from "@/components/ui/button";
@@ -15,62 +16,86 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { formatCurrency } from "@/lib/format";
+import { formatCentsCurrency, parseCents } from "@/lib/format";
 import type { Transaction, WalletSummary } from "@/lib/types";
-
-/** Rounds to whole cents so repeated withdrawals cannot drift on float error. */
-function toCents(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
 export function WalletPanel({
   summary,
-  transactions: initialTransactions,
+  transactions,
 }: {
   summary: WalletSummary;
   transactions: Transaction[];
 }) {
-  const [balance, setBalance] = useState(summary.balance);
-  const [transactions, setTransactions] = useState(initialTransactions);
+  const router = useRouter();
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [amountInput, setAmountInput] = useState("");
-  const [paidOut, setPaidOut] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const canWithdraw = balance > 0;
+  // One key per payout attempt, reused across retries. Reusing it is the whole
+  // point: a retry after a timeout replays the original payout instead of
+  // creating a second one.
+  const [idempotencyKey, setIdempotencyKey] = useState("");
+
+  const balanceCents = summary.balanceCents;
+  const canWithdraw = balanceCents > 0;
 
   // Held as a string so partial input stays editable; the parsed value drives
-  // validation.
-  const parsed = Number.parseFloat(amountInput);
-  const amount = Number.isFinite(parsed) ? toCents(parsed) : Number.NaN;
+  // validation. This is UX only - the server check in requestPayout() is
+  // authoritative.
+  const amountCents = parseCents(amountInput);
+  const clientError = getAmountError(
+    amountInput,
+    amountCents,
+    balanceCents,
+    summary.currency,
+  );
 
-  const error = getAmountError(amountInput, amount, balance, summary.currency);
-
-  // Reset in the open handler rather than an effect - see
-  // react-hooks/set-state-in-effect.
   function openDialog() {
-    setAmountInput(balance.toFixed(2));
+    setAmountInput((balanceCents / 100).toFixed(2));
+    setIdempotencyKey(crypto.randomUUID());
+    setServerError(null);
     setConfirmOpen(true);
   }
 
-  function confirmPayout() {
-    if (error) return;
+  async function submitPayout() {
+    if (clientError || submitting) return;
 
-    // Mock only: there is no payment integration. This mutates React state, so
-    // it resets on reload - the note under the balance says so.
-    const payout: Transaction = {
-      id: `txn_payout_${Date.now()}`,
-      description: "Payout to linked bank account",
-      type: "payout",
-      status: "pending",
-      amount: -amount,
-      currency: summary.currency,
-      occurredAt: new Date().toISOString(),
-    };
+    setSubmitting(true);
+    setServerError(null);
 
-    setTransactions((current) => [payout, ...current]);
-    setBalance((current) => toCents(current - amount));
-    setPaidOut(true);
-    setConfirmOpen(false);
+    try {
+      const response = await fetch("/api/payouts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({ amountCents }),
+      });
+
+      if (!response.ok) {
+        const body: unknown = await response.json().catch(() => null);
+        const message =
+          typeof body === "object" && body !== null && "error" in body
+            ? String((body as { error: unknown }).error)
+            : "Payout failed. Please try again.";
+        setServerError(message);
+        return;
+      }
+
+      setConfirmOpen(false);
+      // Re-fetch the server components so balance and history update together
+      // from the same derived source.
+      router.refresh();
+    } catch {
+      setServerError(
+        "Could not reach the server. Retrying is safe - this request has an idempotency key.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -84,17 +109,9 @@ export function WalletPanel({
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap items-end justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-3xl font-semibold tracking-tight tabular-nums">
-                {formatCurrency(balance, summary.currency)}
-              </p>
-              {paidOut && (
-                <p className="text-xs text-muted-foreground">
-                  Payout requested. This demo does not persist - reload to
-                  reset.
-                </p>
-              )}
-            </div>
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              {formatCentsCurrency(balanceCents, summary.currency)}
+            </p>
 
             <Button
               onClick={openDialog}
@@ -113,13 +130,19 @@ export function WalletPanel({
         <SummaryCard
           icon={<Clock className="size-4" />}
           label="Pending earnings"
-          value={formatCurrency(summary.pendingEarnings, summary.currency)}
-          hint="Clears once the platform settles"
+          value={formatCentsCurrency(
+            summary.pendingEarningsCents,
+            summary.currency,
+          )}
+          hint="Not spendable until it settles"
         />
         <SummaryCard
           icon={<TrendingUp className="size-4" />}
           label="Lifetime earned"
-          value={formatCurrency(summary.lifetimeEarnings, summary.currency)}
+          value={formatCentsCurrency(
+            summary.lifetimeEarningsCents,
+            summary.currency,
+          )}
           hint="Across all connected accounts"
         />
       </div>
@@ -143,7 +166,7 @@ export function WalletPanel({
             className="space-y-2"
             onSubmit={(event) => {
               event.preventDefault();
-              confirmPayout();
+              void submitPayout();
             }}
           >
             <div className="flex items-center justify-between gap-2">
@@ -155,9 +178,10 @@ export function WalletPanel({
                 variant="link"
                 size="sm"
                 className="h-auto p-0 text-xs"
-                onClick={() => setAmountInput(balance.toFixed(2))}
+                onClick={() => setAmountInput((balanceCents / 100).toFixed(2))}
               >
-                Withdraw all ({formatCurrency(balance, summary.currency)})
+                Withdraw all (
+                {formatCentsCurrency(balanceCents, summary.currency)})
               </Button>
             </div>
 
@@ -167,40 +191,54 @@ export function WalletPanel({
               inputMode="decimal"
               step="0.01"
               min="0"
-              max={balance}
+              max={balanceCents / 100}
               value={amountInput}
               onChange={(event) => setAmountInput(event.target.value)}
-              aria-invalid={error !== null}
+              aria-invalid={clientError !== null}
               aria-describedby="payout-amount-help"
+              disabled={submitting}
             />
 
             <p
               id="payout-amount-help"
               className={
-                error
+                clientError
                   ? "text-xs text-destructive"
                   : "text-xs text-muted-foreground"
               }
-              role={error ? "alert" : undefined}
+              role={clientError ? "alert" : undefined}
             >
-              {error ??
-                formatCurrency(toCents(balance - amount), summary.currency) +
-                  " will remain in your balance."}
+              {clientError ??
+                formatCentsCurrency(
+                  balanceCents - amountCents,
+                  summary.currency,
+                ) + " will remain in your balance."}
             </p>
+
+            {serverError && (
+              <p className="text-xs text-destructive" role="alert">
+                {serverError}
+              </p>
+            )}
           </form>
 
-          <p className="text-xs text-muted-foreground">
-            This is a demo - no real transfer is made.
-          </p>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={submitting}
+            >
               Cancel
             </Button>
-            <Button onClick={confirmPayout} disabled={error !== null}>
-              {error
+            <Button
+              onClick={() => void submitPayout()}
+              disabled={clientError !== null || submitting}
+            >
+              {submitting && <Loader2 className="animate-spin" />}
+              {clientError
                 ? "Withdraw"
-                : "Withdraw " + formatCurrency(amount, summary.currency)}
+                : "Withdraw " +
+                  formatCentsCurrency(amountCents, summary.currency)}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -211,16 +249,18 @@ export function WalletPanel({
 
 function getAmountError(
   raw: string,
-  amount: number,
-  balance: number,
+  amountCents: number,
+  balanceCents: number,
   currency: string,
 ): string | null {
   if (raw.trim() === "") return "Enter an amount.";
-  if (!Number.isFinite(amount)) return "Enter a valid number.";
-  if (amount <= 0) return "Amount must be greater than zero.";
-  if (amount > balance) {
+  if (!Number.isFinite(amountCents)) return "Enter a valid number.";
+  if (amountCents <= 0) return "Amount must be greater than zero.";
+  if (amountCents > balanceCents) {
     return (
-      "You can withdraw at most " + formatCurrency(balance, currency) + "."
+      "You can withdraw at most " +
+      formatCentsCurrency(balanceCents, currency) +
+      "."
     );
   }
   return null;
