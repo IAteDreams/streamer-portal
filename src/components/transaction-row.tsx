@@ -1,7 +1,7 @@
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { formatDate, formatSignedCurrency } from "@/lib/format";
+import { formatDate, formatSignedCents } from "@/lib/format";
 import type { Transaction, TransactionStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ const STATUS_LABEL: Record<TransactionStatus, string> = {
 };
 
 export function TransactionRow({ transaction }: { transaction: Transaction }) {
-  const isMoneyIn = transaction.amount > 0;
+  const isMoneyIn = transaction.amountCents > 0;
   const Icon = isMoneyIn ? ArrowDownLeft : ArrowUpRight;
 
   return (
@@ -57,7 +57,7 @@ export function TransactionRow({ transaction }: { transaction: Transaction }) {
             transaction.status === "failed" && "line-through opacity-60",
           )}
         >
-          {formatSignedCurrency(transaction.amount, transaction.currency)}
+          {formatSignedCents(transaction.amountCents, transaction.currency)}
         </span>
         <Badge variant={STATUS_VARIANT[transaction.status]}>
           {STATUS_LABEL[transaction.status]}

@@ -9,7 +9,7 @@ import { getCurrentStreamer } from "@/lib/mock/streamer";
 // Rendered per request so the figures are never baked in at build time.
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
   const streamer = getCurrentStreamer();
   const firstName = streamer.displayName.split(" ")[0];
   const accounts = getConnectedAccounts();
@@ -27,7 +27,7 @@ export default function DashboardPage() {
         </p>
       </header>
 
-      <DashboardMetricsRow metrics={getDashboardMetrics()} />
+      <DashboardMetricsRow metrics={await getDashboardMetrics()} />
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Connected accounts</h2>

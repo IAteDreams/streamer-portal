@@ -85,6 +85,89 @@ components.json            shadcn/ui configuration
 `src/app/api/health/route.ts` and `src/components/health-status.tsx` are the
 reference pair.
 
+## Payouts
+
+> [!WARNING]
+> **There is no authentication.** The streamer is resolved server-side and is
+> never read from the request, so a caller cannot pay out from someone else's
+> balance — but anyone who can reach `POST /api/payouts` can drain _this_
+> streamer's balance. **Do not deploy publicly as-is.** Auth is out of scope
+> (see `CLAUDE.md`); this is the blocker to lift first.
+
+The wallet is a real ledger, not a mocked number.
+
+**Balance is never stored.** It is `SUM(amount_cents)` over completed rows in
+`transactions`, so the balance and the history cannot disagree. Pending entries
+are not spendable; failed entries never happened.
+
+**Money is integer cents** everywhere except the display edge. Floats are never
+used for money.
+
+**Requesting a payout** (`src/lib/payouts/service.ts`) rests on two guarantees,
+both enforced by Postgres rather than application code that could race:
+
+1. `SELECT … FOR UPDATE` on the streamer row serialises concurrent payouts, so
+   two requests cannot both read the same balance and both pass the
+   sufficient-funds check.
+2. A `UNIQUE` index on `payout_requests.idempotency_key` makes a duplicate
+   insert impossible. Retrying with the same key replays the original result.
+
+```
+POST /api/payouts
+Idempotency-Key: <uuid>
+{ "amountCents": 50000 }
+
+201  created          200  replayed
+400  invalid amount / insufficient funds
+409  key reused with a different amount
+```
+
+The client generates one key per payout attempt and reuses it across retries —
+that is what makes a retry safe after a timeout.
+
+### Database setup
+
+```bash
+vercel env pull .env.development.local   # or set POSTGRES_URL in .env.local
+npm run db:generate                      # build the migration from the schema
+npm run db:migrate                       # apply it
+npm run db:seed                          # streamer + opening balance + history
+```
+
+`POSTGRES_URL` is the pooled connection the app uses;
+`POSTGRES_URL_NON_POOLING` is the direct one migrations need, because
+pgBouncer's transaction mode cannot run DDL.
+
+Without a database, `/` and `/wallet` return 500 — both read live ledger state.
+`/posts` is unaffected.
+
+### Payment provider
+
+Payout delivery sits behind the `PayoutProvider` interface, so swapping vendors
+means writing one adapter and leaving the domain alone.
+
+- **Mock provider** — the default. Moves no money. The app runs with no Stripe
+  account at all.
+- **Stripe Connect** — used automatically once `STRIPE_API_KEY` and
+  `STRIPE_CONNECT_ACCOUNT_ID` are set.
+
+The connected account must be created with **Accounts v2**
+(`POST /v2/core/accounts`) using `configuration.recipient` requesting the
+`stripe_balance.stripe_transfers` capability and `dashboard: "express"`. The
+older `accounts.create({ type: "express" })` form is a deprecated v1 pattern.
+The adapter checks that capability is `active` before moving money.
+
+Because this portal only pays money out, do **not** request
+`configuration.merchant` or `card_payments` — it only lengthens onboarding.
+
+Prefer a **restricted key** (`rk_…`) over a secret key, scoped to
+_Transfers: write_ and _Connected accounts: read_. On Vercel, mark it a
+Sensitive environment variable. No Stripe account? `npm i -g @stripe/cli &&
+stripe sandbox create` issues test keys without registering.
+
+Payout status is settled by `POST /api/webhooks/stripe`, which verifies the
+signature against the raw request body.
+
 ## Environment variables
 
 Copy `.env.example` to `.env.local` for local development; `.env*` files are

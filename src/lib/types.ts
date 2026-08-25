@@ -50,9 +50,10 @@ export interface Post {
 }
 
 export interface WalletSummary {
-  balance: number;
-  pendingEarnings: number;
-  lifetimeEarnings: number;
+  /** Integer minor units (cents). Money is never a float. */
+  balanceCents: number;
+  pendingEarningsCents: number;
+  lifetimeEarningsCents: number;
   /** ISO 4217 code, e.g. "USD". */
   currency: string;
 }
@@ -61,7 +62,7 @@ export interface WalletSummary {
 export interface DashboardMetrics {
   totalFollowers: number;
   totalViews: number;
-  balance: number;
+  balanceCents: number;
   currency: string;
   /** Percent change vs the prior 30 days, e.g. 12.4 or -3.1. */
   followersDelta: number;
@@ -78,8 +79,8 @@ export interface Transaction {
   description: string;
   type: TransactionType;
   status: TransactionStatus;
-  /** Signed: positive for money in, negative for money out. */
-  amount: number;
+  /** Integer minor units (cents), signed: positive in, negative out. */
+  amountCents: number;
   /** ISO 4217 code, e.g. "USD". */
   currency: string;
   /** ISO 8601. */

@@ -1,7 +1,7 @@
 import { Eye, Users, Wallet } from "lucide-react";
 
 import { MetricCard } from "@/components/metric-card";
-import { formatCompact, formatCurrency } from "@/lib/format";
+import { formatCentsCurrency, formatCompact } from "@/lib/format";
 import type { DashboardMetrics } from "@/lib/types";
 
 export function DashboardMetricsRow({
@@ -25,7 +25,7 @@ export function DashboardMetricsRow({
       />
       <MetricCard
         label="Balance"
-        value={formatCurrency(metrics.balance, metrics.currency)}
+        value={formatCentsCurrency(metrics.balanceCents, metrics.currency)}
         delta={metrics.balanceDelta}
         icon={Wallet}
       />
